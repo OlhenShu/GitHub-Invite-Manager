@@ -66,7 +66,7 @@ export default function RepoResults({ response }: Props) {
                 <td className="px-4 py-2.5">
                   <Badge variant={STATUS_VARIANT[r.status]}>{STATUS_LABELS[r.status]}</Badge>
                 </td>
-                <td className="px-4 py-2.5 text-slate-500 text-xs">{r.message ?? '—'}</td>
+                <td className="px-4 py-2.5 text-slate-500 text-xs">{r.message ?? '–'}</td>
               </tr>
             ))}
           </tbody>

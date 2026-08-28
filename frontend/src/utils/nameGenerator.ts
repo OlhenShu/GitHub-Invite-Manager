@@ -39,3 +39,10 @@ export function parseUsernames(raw: string): string[] {
   }
   return result
 }
+
+/** Custom List: `{templateRepo}-{username}` → e.g. ss-modules-next-StanislavTarasiuk */
+export function buildRepoNamesFromUsernames(templateRepo: string, usernames: string[]): string[] {
+  const prefix = templateRepo.trim()
+  if (!prefix) return []
+  return usernames.map(username => `${prefix}-${username}`)
+}

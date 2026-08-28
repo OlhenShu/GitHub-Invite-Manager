@@ -1,6 +1,7 @@
 package com.github.manager.service;
 
 import com.github.manager.client.GitHubClient;
+import com.github.manager.dto.InviteAssignment;
 import com.github.manager.dto.InviteMode;
 import com.github.manager.dto.InviteRequest;
 import com.github.manager.dto.InviteResponse;
@@ -39,9 +40,49 @@ public class InvitationService {
             throw new IllegalArgumentException("No valid usernames found in the provided text");
         }
 
-        return request.mode() == InviteMode.TEAM
-                ? sendTeamInvites(token, usernames, repositories, permission)
-                : sendIndividualInvites(token, usernames, repositories, permission);
+        if (request.mode() == InviteMode.TEAM) {
+            List<InviteAssignment> assignments = request.assignments();
+            if (assignments != null && !assignments.isEmpty()) {
+                return sendAssignedInvites(token, assignments, permission);
+            }
+            return sendTeamInvites(token, usernames, repositories, permission);
+        }
+        return sendIndividualInvites(token, usernames, repositories, permission);
+    }
+
+    private InviteResponse sendAssignedInvites(String token, List<InviteAssignment> assignments,
+                                               String permission) {
+        List<InviteResult> results = new ArrayList<>();
+        int total = assignments.size();
+        int idx = 0;
+
+        for (InviteAssignment assignment : assignments) {
+            String repository = assignment.repository() == null ? "" : assignment.repository().trim();
+            String username = assignment.username() == null ? "" : assignment.username().trim();
+
+            if (username.isBlank()) {
+                results.add(InviteResult.failed(repository, "–", "Username is required"));
+                continue;
+            }
+
+            String[] parts = repository.split("/", 2);
+            if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+                log.warn("Skipping invalid repository format: '{}'", repository);
+                results.add(InviteResult.failed(repository, username,
+                        "Invalid repository format (expected owner/repo)"));
+                continue;
+            }
+
+            log.info("Inviting {}/{} – {} to {}", ++idx, total, username, repository);
+            results.add(gitHubClient.inviteCollaborator(
+                    token, parts[0], parts[1], username, permission));
+
+            if (idx < total) {
+                sleep(REQUEST_DELAY_MS);
+            }
+        }
+
+        return InviteResponse.of(results);
     }
 
     private InviteResponse sendIndividualInvites(String token, List<String> usernames,

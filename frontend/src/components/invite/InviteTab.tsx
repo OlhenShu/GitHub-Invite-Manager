@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { Upload, Send, Users, User, HelpCircle } from 'lucide-react'
 import type { InviteMode, InviteResponse } from '../../types'
 import { sendInvites } from '../../api/client'
@@ -9,10 +9,12 @@ import { Textarea } from '../ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { TooltipRoot, TooltipTrigger, TooltipContent } from '../ui/tooltip'
 import InviteResults from './InviteResults'
+import TeamAssignmentBoard from './TeamAssignmentBoard'
 
 interface Props {
   token: string
   suggestedRepos: string[]
+  initialUsernames?: string[]
 }
 
 const PERMISSIONS = ['push', 'pull', 'triage', 'maintain', 'admin'] as const
@@ -38,7 +40,7 @@ function FieldHint({ children }: { children: React.ReactNode }) {
   )
 }
 
-export default function InviteTab({ token, suggestedRepos }: Props) {
+export default function InviteTab({ token, suggestedRepos, initialUsernames = [] }: Props) {
   const [mode, setMode] = useState<InviteMode>('INDIVIDUAL')
   const [rawUsernames, setRawUsernames] = useState('')
   const [selectedSuggested, setSelectedSuggested] = useState<string[]>([])
@@ -47,7 +49,20 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [response, setResponse] = useState<InviteResponse | null>(null)
+  const [teamAssignments, setTeamAssignments] = useState<Record<string, string>>({})
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (initialUsernames.length > 0) {
+      setRawUsernames(initialUsernames.join('\n'))
+    }
+  }, [initialUsernames])
+
+  useEffect(() => {
+    if (suggestedRepos.length > 0 && mode === 'INDIVIDUAL') {
+      setSelectedSuggested(suggestedRepos)
+    }
+  }, [suggestedRepos, mode])
 
   const parsedUsernames = useMemo(() => parseUsernames(rawUsernames), [rawUsernames])
 
@@ -56,6 +71,19 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
     const manual = manualRepos.split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('#'))
     return [...fromSuggested, ...manual]
   }, [suggestedRepos, selectedSuggested, manualRepos])
+
+  useEffect(() => {
+    setTeamAssignments(prev => {
+      const next: Record<string, string> = {}
+      for (const [user, repo] of Object.entries(prev)) {
+        if (parsedUsernames.includes(user) && allRepos.includes(repo)) next[user] = repo
+      }
+      const same =
+        Object.keys(next).length === Object.keys(prev).length &&
+        Object.keys(next).every(k => next[k] === prev[k])
+      return same ? prev : next
+    })
+  }, [parsedUsernames, allRepos])
 
   const pairs = useMemo(() => {
     const len = Math.max(allRepos.length, parsedUsernames.length)
@@ -66,9 +94,10 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
     }))
   }, [allRepos, parsedUsernames])
 
+  const teamAssignmentCount = Object.keys(teamAssignments).length
   const matchedCount = mode === 'INDIVIDUAL'
     ? Math.min(allRepos.length, parsedUsernames.length)
-    : allRepos.length * parsedUsernames.length
+    : teamAssignmentCount
 
   const unmatchedRepos = allRepos.length - Math.min(allRepos.length, parsedUsernames.length)
   const unmatchedUsers = parsedUsernames.length - Math.min(allRepos.length, parsedUsernames.length)
@@ -92,13 +121,22 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
     if (!token.trim()) { setError('Please enter a GitHub token.'); return }
     if (parsedUsernames.length === 0) { setError('No valid usernames found.'); return }
     if (allRepos.length === 0) { setError('Please specify at least one repository.'); return }
+    if (mode === 'TEAM' && teamAssignmentCount === 0) { setError('Assign at least one username to a team.'); return }
     if (matchedCount === 0) { setError('No pairs to send.'); return }
+
+    const assignments = Object.entries(teamAssignments).map(([username, repository]) => ({ username, repository }))
 
     setLoading(true)
     setError(null)
     setResponse(null)
     try {
-      const res = await sendInvites(token, { rawUsernames, repositories: allRepos, permission, mode })
+      const res = await sendInvites(token, {
+        rawUsernames,
+        repositories: allRepos,
+        permission,
+        mode,
+        ...(mode === 'TEAM' ? { assignments } : {}),
+      })
       setResponse(res)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -116,16 +154,19 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
           <div className="flex items-center gap-1">
             <Label className="text-sm font-medium">Invite mode</Label>
             <FieldHint>
-              <p className="font-medium mb-1">Individual — 1-to-1</p>
+              <p className="font-medium mb-1">Individual – 1-to-1</p>
               <p className="text-slate-500">repos[0] → users[0], repos[1] → users[1]…</p>
-              <p className="font-medium mt-2 mb-1">Team — N × M</p>
-              <p className="text-slate-500">Every user is invited to every repo.</p>
+              <p className="font-medium mt-2 mb-1">Team – manual assignment</p>
+              <p className="text-slate-500">Click a username and choose which team repository to add them to. Several people can share one team.</p>
             </FieldHint>
           </div>
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setMode('INDIVIDUAL')}
+              onClick={() => {
+                setMode('INDIVIDUAL')
+                if (suggestedRepos.length > 0) setSelectedSuggested(suggestedRepos)
+              }}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                 mode === 'INDIVIDUAL'
                   ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-600 shadow-sm'
@@ -137,7 +178,10 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
             </button>
             <button
               type="button"
-              onClick={() => setMode('TEAM')}
+              onClick={() => {
+                setMode('TEAM')
+                setSelectedSuggested([])
+              }}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                 mode === 'TEAM'
                   ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-600 shadow-sm'
@@ -150,8 +194,8 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
           </div>
           <p className="text-xs text-slate-500">
             {mode === 'INDIVIDUAL'
-              ? 'repos[i] → usernames[i] — each person gets their own repo (1-to-1 pairing)'
-              : 'All users are invited to every repo — N repos × M users invitations'}
+              ? 'repos[i] → usernames[i] – each person gets their own repo (1-to-1 pairing)'
+              : 'Click a username and choose which team repository to add them to'}
           </p>
         </div>
 
@@ -166,8 +210,8 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
                 <p className="font-medium mb-1">One GitHub username per line.</p>
                 <p className="text-slate-500 mb-1">Lines starting with <code className="bg-slate-100 px-1 rounded">#</code> are treated as comments and ignored.</p>
                 {mode === 'INDIVIDUAL'
-                  ? <p className="text-slate-500">Order matters — user on line N is paired with repo N.</p>
-                  : <p className="text-slate-500">Order doesn't matter — all users will be invited to all repos.</p>}
+                  ? <p className="text-slate-500">Order matters – user on line N is paired with repo N.</p>
+                  : <p className="text-slate-500">Order doesn't matter – you will assign each person to a team below.</p>}
                 <p className="text-slate-400 mt-1 text-[11px]">Example:<br />alice<br />bob<br /># spare account<br />charlie</p>
               </FieldHint>
               <span className="text-slate-400 text-xs font-normal ml-1">
@@ -200,20 +244,22 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
         {suggestedRepos.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-1">
-              <Label className="text-sm font-medium">Repositories from this session</Label>
+              <Label className="text-sm font-medium">
+                {mode === 'TEAM' ? 'Team repositories from this session' : 'Repositories from this session'}
+              </Label>
               <FieldHint>
                 {mode === 'INDIVIDUAL'
                   ? <>
                       <p className="font-medium mb-1">Click repos to select them in order.</p>
-                      <p className="text-slate-500">The number shown on each chip is the position in the pairing queue — it must match the line number of the corresponding username.</p>
+                      <p className="text-slate-500">The number shown on each chip is the position in the pairing queue – it must match the line number of the corresponding username.</p>
                     </>
                   : <>
-                      <p className="font-medium mb-1">Click repos to add them to the team invite.</p>
-                      <p className="text-slate-500">All selected users will be invited to every repo you select here.</p>
+                      <p className="font-medium mb-1">Click the team repos you want to assign people to.</p>
+                      <p className="text-slate-500">These become the teams in the assignment board below. Student repos from Custom List are not selected automatically.</p>
                     </>}
               </FieldHint>
               <span className="text-slate-400 text-xs font-normal ml-1">
-                {mode === 'INDIVIDUAL' ? '(click to select in order)' : '(click to select)'}
+                {mode === 'INDIVIDUAL' ? '(click to select in order)' : '(click to select teams)'}
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-3 border border-slate-200 rounded-lg bg-slate-50">
@@ -251,11 +297,11 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
         {/* Manual repos */}
         <div className="space-y-2">
           <div className="flex items-center gap-1">
-            <Label className="text-sm font-medium">Additional repositories</Label>
+            <Label className="text-sm font-medium">{mode === 'TEAM' ? 'Additional team repositories' : 'Additional repositories'}</Label>
             <FieldHint>
               <p className="font-medium mb-1">One repository per line in <code className="bg-slate-100 px-1 rounded">owner/repo</code> format.</p>
               <p className="text-slate-500 mb-1">Lines starting with <code className="bg-slate-100 px-1 rounded">#</code> are ignored.</p>
-              {mode === 'INDIVIDUAL' && <p className="text-slate-500">Order matters — repo on line N is paired with username N.</p>}
+              {mode === 'INDIVIDUAL' && <p className="text-slate-500">Order matters – repo on line N is paired with username N.</p>}
               <p className="text-slate-400 mt-1 text-[11px]">Example:<br />my-org/team-alpha<br />my-org/team-beta</p>
             </FieldHint>
             <span className="text-slate-400 text-xs font-normal ml-1">
@@ -279,9 +325,9 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
                 <Label className="text-sm font-medium">Pairing preview</Label>
                 <FieldHint>
                   <p className="font-medium mb-1">repos[i] → username[i]</p>
-                  <p className="text-slate-500">Each row shows which username will receive an invite to which repo. Rows marked <span className="text-amber-600">skip</span> won't be sent — fix the list lengths to remove the warning.</p>
+                  <p className="text-slate-500">Each row shows which username will receive an invite to which repo. Rows marked <span className="text-amber-600">skip</span> won't be sent – fix the list lengths to remove the warning.</p>
                 </FieldHint>
-                <span className="text-slate-400 text-xs font-normal ml-1">— repo[i] → username[i]</span>
+                <span className="text-slate-400 text-xs font-normal ml-1">– repo[i] → username[i]</span>
               </div>
 
               {(unmatchedRepos > 0 || unmatchedUsers > 0) && (
@@ -306,8 +352,8 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
                     {pairs.map(pair => (
                       <tr key={pair.index} className={pair.repo && pair.username ? 'hover:bg-slate-50' : 'bg-amber-50'}>
                         <td className="px-4 py-2 text-slate-400">{pair.index}</td>
-                        <td className="px-4 py-2 font-mono">{pair.repo ?? <span className="text-amber-500 italic">—</span>}</td>
-                        <td className="px-4 py-2 font-mono">{pair.username ?? <span className="text-amber-500 italic">—</span>}</td>
+                        <td className="px-4 py-2 font-mono">{pair.repo ?? <span className="text-amber-500 italic">–</span>}</td>
+                        <td className="px-4 py-2 font-mono">{pair.username ?? <span className="text-amber-500 italic">–</span>}</td>
                         <td className="px-4 py-2">
                           {pair.repo && pair.username
                             ? <span className="text-green-600 font-medium">✓</span>
@@ -321,52 +367,12 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
             </div>
           )
         ) : (
-          (allRepos.length > 0 || parsedUsernames.length > 0) && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Label className="text-sm font-medium">Team invite preview</Label>
-                <FieldHint>
-                  <p className="font-medium mb-1">Every user will be invited to every repo.</p>
-                  <p className="text-slate-500">Total invitations = number of repos × number of users.</p>
-                </FieldHint>
-                <span className="text-slate-400 text-xs font-normal ml-1">— every user invited to every repo</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 text-xs font-medium text-slate-500">
-                    Repositories ({allRepos.length})
-                  </div>
-                  <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
-                    {allRepos.length === 0
-                      ? <p className="px-3 py-2 text-xs text-slate-400 italic">No repos selected</p>
-                      : allRepos.map((repo, i) => (
-                        <div key={i} className="px-3 py-1.5 font-mono text-xs text-slate-700">{repo}</div>
-                      ))}
-                  </div>
-                </div>
-
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 text-xs font-medium text-slate-500">
-                    Users ({parsedUsernames.length})
-                  </div>
-                  <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
-                    {parsedUsernames.length === 0
-                      ? <p className="px-3 py-2 text-xs text-slate-400 italic">No usernames entered</p>
-                      : parsedUsernames.map((u, i) => (
-                        <div key={i} className="px-3 py-1.5 font-mono text-xs text-slate-700">{u}</div>
-                      ))}
-                  </div>
-                </div>
-              </div>
-
-              {allRepos.length > 0 && parsedUsernames.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 text-blue-800 text-xs px-4 py-2.5 rounded-lg">
-                  {allRepos.length} repo{allRepos.length !== 1 ? 's' : ''} × {parsedUsernames.length} user{parsedUsernames.length !== 1 ? 's' : ''} = <strong>{matchedCount}</strong> invitation{matchedCount !== 1 ? 's' : ''} total
-                </div>
-              )}
-            </div>
-          )
+          <TeamAssignmentBoard
+            usernames={parsedUsernames}
+            teams={allRepos}
+            assignments={teamAssignments}
+            onChange={setTeamAssignments}
+          />
         )}
 
         {/* Permission */}
@@ -379,7 +385,7 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
                 {Object.entries(PERMISSION_DESCRIPTIONS).map(([key, desc]) => (
                   <p key={key} className="mb-1">
                     <span className="font-medium text-slate-700">{key}</span>
-                    <span className="text-slate-500"> — {desc}</span>
+                    <span className="text-slate-500"> – {desc}</span>
                   </p>
                 ))}
               </FieldHint>
@@ -402,6 +408,14 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
             <p className="text-sm text-slate-500 mb-2">
               {allRepos.length} repo{allRepos.length !== 1 ? 's' : ''} × 1 user each ={' '}
               <strong>{matchedCount}</strong> invitation{matchedCount !== 1 ? 's' : ''}
+            </p>
+          )}
+          {mode === 'TEAM' && parsedUsernames.length > 0 && (
+            <p className="text-sm text-slate-500 mb-2">
+              <strong>{teamAssignmentCount}</strong> assigned
+              {parsedUsernames.length - teamAssignmentCount > 0 && (
+                <span> · {parsedUsernames.length - teamAssignmentCount} unassigned (skipped)</span>
+              )}
             </p>
           )}
         </div>
@@ -432,7 +446,7 @@ export default function InviteTab({ token, suggestedRepos }: Props) {
               <Send className="w-5 h-5 mr-2" />
               {mode === 'INDIVIDUAL'
                 ? `Send ${matchedCount} invitation${matchedCount !== 1 ? 's' : ''} (1 per repo)`
-                : `Send ${matchedCount} invitation${matchedCount !== 1 ? 's' : ''} (${allRepos.length} repos × ${parsedUsernames.length} users)`}
+                : `Send ${matchedCount} invitation${matchedCount !== 1 ? 's' : ''} (manual team assignment)`}
             </>
           )}
         </Button>

@@ -13,6 +13,7 @@ export default function App() {
   const [token, setToken] = useState('')
   const [showToken, setShowToken] = useState(false)
   const [createdRepos, setCreatedRepos] = useState<string[]>([])
+  const [createdUsernames, setCreatedUsernames] = useState<string[]>([])
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -44,7 +45,7 @@ export default function App() {
                 GitHub Fine-Grained Personal Access Token
               </Label>
               <p className="text-sm text-slate-500 mt-1">
-                Stored in memory only — never saved to localStorage or sent to any server other than GitHub.
+                Stored in memory only – never saved to localStorage or sent to any server other than GitHub.
                 Requires{' '}
                 <Badge variant="secondary" className="mx-1">Administration: Read &amp; Write</Badge>
                 <Badge variant="secondary" className="mx-1">Metadata: Read</Badge>
@@ -95,13 +96,19 @@ export default function App() {
 
           <TabsContent value="create">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-              <CreateReposTab token={token} onReposCreated={setCreatedRepos} />
+              <CreateReposTab
+                token={token}
+                onReposCreated={(repos, usernames) => {
+                  setCreatedRepos(repos)
+                  setCreatedUsernames(usernames ?? [])
+                }}
+              />
             </div>
           </TabsContent>
 
           <TabsContent value="invite">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-              <InviteTab token={token} suggestedRepos={createdRepos} />
+              <InviteTab token={token} suggestedRepos={createdRepos} initialUsernames={createdUsernames} />
             </div>
           </TabsContent>
         </Tabs>

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { GitBranch, FileText, Shield, Hash, Lock } from 'lucide-react'
 import type { CreateReposRequest, CreateReposResponse, NamingMode } from '../../types'
 import { createRepos } from '../../api/client'
-import { parseRepoNamesList } from '../../utils/nameGenerator'
+import { buildRepoNamesFromUsernames, parseUsernames } from '../../utils/nameGenerator'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
@@ -14,7 +14,7 @@ import RepoResults from './RepoResults'
 
 interface Props {
   token: string
-  onReposCreated: (repos: string[]) => void
+  onReposCreated: (repos: string[], usernames?: string[]) => void
 }
 
 export default function CreateReposTab({ token, onReposCreated }: Props) {
@@ -31,10 +31,16 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [response, setResponse] = useState<CreateReposResponse | null>(null)
 
+  const listUsernames = useMemo(() => parseUsernames(listRaw), [listRaw])
+  const listRepoNames = useMemo(
+    () => buildRepoNamesFromUsernames(templateRepo, listUsernames),
+    [templateRepo, listUsernames],
+  )
+
   const repoCount = useMemo(() => {
     if (namingMode === 'PATTERN') return pattern.baseName.trim() ? pattern.count : 0
-    return parseRepoNamesList(listRaw).length
-  }, [namingMode, pattern, listRaw])
+    return listRepoNames.length
+  }, [namingMode, pattern, listRepoNames])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,7 +61,7 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
       description: description.trim() || undefined,
       ...(namingMode === 'PATTERN'
         ? { baseName: pattern.baseName.trim(), count: pattern.count, startIndex: pattern.startIndex, padding: pattern.padding }
-        : { repoNames: parseRepoNamesList(listRaw) }),
+        : { repoNames: listRepoNames }),
     }
 
     setLoading(true)
@@ -68,6 +74,7 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
         res.results
           .filter(r => r.status === 'created' || r.status === 'already_exists')
           .map(r => `${targetOrg.trim()}/${r.repoName}`),
+        namingMode === 'LIST' ? listUsernames : undefined,
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -118,7 +125,7 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="target-org" className="text-sm font-medium">
-              Target organisation <span className="text-red-500">*</span>
+              Target organization <span className="text-red-500">*</span>
             </Label>
             <Input
               id="target-org"
@@ -147,12 +154,12 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
           </div>
         </div>
 
-        {/* Description — full width */}
+        {/* Description – full width */}
         <div className="col-span-2 space-y-2">
           <Label htmlFor="description" className="text-sm font-medium">
             Description{' '}
             <span className="text-slate-400 font-normal">
-              (optional — use <code className="bg-slate-100 px-1 rounded text-xs">{'{name}'}</code> for repo name substitution)
+              (optional – use <code className="bg-slate-100 px-1 rounded text-xs">{'{name}'}</code> for repo name substitution)
             </span>
           </Label>
           <Input
@@ -163,7 +170,7 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
           />
         </div>
 
-        {/* Include all branches — full width */}
+        {/* Include all branches – full width */}
         <div className="col-span-2 flex items-center space-x-2">
           <Switch
             id="include-branches"
@@ -175,7 +182,7 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
           </Label>
         </div>
 
-        {/* Naming Mode — full width */}
+        {/* Naming Mode – full width */}
         <div className="col-span-2 space-y-4 pt-4 border-t border-slate-100">
           <div className="flex items-center gap-2">
             <Hash className="w-4 h-4 text-blue-600" />
@@ -203,7 +210,7 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
           {namingMode === 'PATTERN' ? (
             <NamingPatternForm value={pattern} onChange={v => setPattern(p => ({ ...p, ...v }))} />
           ) : (
-            <NamingListForm value={listRaw} onChange={setListRaw} />
+            <NamingListForm value={listRaw} templateRepo={templateRepo} onChange={setListRaw} />
           )}
         </div>
 

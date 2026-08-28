@@ -18,7 +18,7 @@ export default function TokenInput({ value, onChange }: Props) {
         className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
       />
       <p className="mt-1 text-xs text-gray-500">
-        Stored in memory only — never saved to localStorage or sent to any server other than GitHub.
+        Stored in memory only – never saved to localStorage or sent to any server other than GitHub.
         Requires <strong>Administration: Read &amp; Write</strong> + <strong>Metadata: Read</strong>.
       </p>
     </div>

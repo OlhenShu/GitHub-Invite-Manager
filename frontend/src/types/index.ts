@@ -41,11 +41,17 @@ export interface CreateReposResponse {
 
 export type InviteMode = 'INDIVIDUAL' | 'TEAM'
 
+export interface InviteAssignment {
+  repository: string
+  username: string
+}
+
 export interface InviteRequest {
   rawUsernames: string
   repositories: string[]
   permission: string
   mode: InviteMode
+  assignments?: InviteAssignment[]
 }
 
 export type InviteStatus = 'invited' | 'already_collaborator' | 'user_not_found' | 'failed'
