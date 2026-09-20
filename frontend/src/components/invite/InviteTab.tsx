@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { TooltipRoot, TooltipTrigger, TooltipContent } from '../ui/tooltip'
 import InviteResults from './InviteResults'
 import TeamAssignmentBoard from './TeamAssignmentBoard'
+import ExistingRepoPicker from './ExistingRepoPicker'
 
 interface Props {
   token: string
@@ -50,6 +51,7 @@ export default function InviteTab({ token, suggestedRepos, initialUsernames = []
   const [error, setError] = useState<string | null>(null)
   const [response, setResponse] = useState<InviteResponse | null>(null)
   const [teamAssignments, setTeamAssignments] = useState<Record<string, string>>({})
+  const [githubSelected, setGithubSelected] = useState<string[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -68,9 +70,18 @@ export default function InviteTab({ token, suggestedRepos, initialUsernames = []
 
   const allRepos = useMemo(() => {
     const fromSuggested = suggestedRepos.filter(r => selectedSuggested.includes(r))
+    const fromGithub = githubSelected.filter(r => !fromSuggested.includes(r))
     const manual = manualRepos.split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('#'))
-    return [...fromSuggested, ...manual]
-  }, [suggestedRepos, selectedSuggested, manualRepos])
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const repo of [...fromSuggested, ...fromGithub, ...manual]) {
+      if (!seen.has(repo)) {
+        seen.add(repo)
+        result.push(repo)
+      }
+    }
+    return result
+  }, [suggestedRepos, selectedSuggested, githubSelected, manualRepos])
 
   useEffect(() => {
     setTeamAssignments(prev => {
@@ -294,25 +305,41 @@ export default function InviteTab({ token, suggestedRepos, initialUsernames = []
           </div>
         )}
 
+        {/* Existing repos from GitHub */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-1">
+            <Label className="text-sm font-medium">Existing repositories</Label>
+            <FieldHint>
+              <p className="font-medium mb-1">Invite to a repository you already have.</p>
+              <p className="text-slate-500 mb-1"><strong>My account</strong> — personal repos with no organization, e.g. <code className="bg-slate-100 px-1 rounded">yourname/lab-01</code>.</p>
+              <p className="text-slate-500"><strong>Organization</strong> — repos inside an org, e.g. <code className="bg-slate-100 px-1 rounded">my-org/lab-01</code>.</p>
+            </FieldHint>
+            <span className="text-slate-400 text-xs font-normal ml-1">
+              (personal account or organization)
+            </span>
+          </div>
+          <ExistingRepoPicker token={token} selected={githubSelected} onChange={setGithubSelected} />
+        </div>
+
         {/* Manual repos */}
         <div className="space-y-2">
           <div className="flex items-center gap-1">
-            <Label className="text-sm font-medium">{mode === 'TEAM' ? 'Additional team repositories' : 'Additional repositories'}</Label>
+            <Label className="text-sm font-medium">Additional repositories</Label>
             <FieldHint>
               <p className="font-medium mb-1">One repository per line in <code className="bg-slate-100 px-1 rounded">owner/repo</code> format.</p>
-              <p className="text-slate-500 mb-1">Lines starting with <code className="bg-slate-100 px-1 rounded">#</code> are ignored.</p>
+              <p className="text-slate-500 mb-1">Works with a personal account or an organization. Lines starting with <code className="bg-slate-100 px-1 rounded">#</code> are ignored.</p>
               {mode === 'INDIVIDUAL' && <p className="text-slate-500">Order matters – repo on line N is paired with username N.</p>}
-              <p className="text-slate-400 mt-1 text-[11px]">Example:<br />my-org/team-alpha<br />my-org/team-beta</p>
+              <p className="text-slate-400 mt-1 text-[11px]">Example:<br />yourname/lab-01<br />my-org/lab-02</p>
             </FieldHint>
             <span className="text-slate-400 text-xs font-normal ml-1">
-              (owner/repo, one per line{mode === 'INDIVIDUAL' ? ', in order' : ''})
+              (owner/repo — personal or org{mode === 'INDIVIDUAL' ? ', in order' : ''})
             </span>
           </div>
           <Textarea
             value={manualRepos}
             onChange={e => setManualRepos(e.target.value)}
             rows={3}
-            placeholder={'my-org/team-1\nmy-org/team-2'}
+            placeholder={'yourname/lab-01\nmy-org/lab-02'}
             className="font-mono text-sm"
           />
         </div>
@@ -388,6 +415,7 @@ export default function InviteTab({ token, suggestedRepos, initialUsernames = []
                     <span className="text-slate-500"> – {desc}</span>
                   </p>
                 ))}
+                <p className="text-slate-500 mt-2">Personal (non-org) repos accept pull, push, and admin. Org-only roles are retried without a permission field.</p>
               </FieldHint>
             </div>
             <Select value={permission} onValueChange={setPermission}>
@@ -403,6 +431,9 @@ export default function InviteTab({ token, suggestedRepos, initialUsernames = []
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-[11px] text-slate-400 leading-snug w-72">
+              Personal repos typically get write access. Organization-only roles (triage, maintain) are retried without a permission field.
+            </p>
           </div>
           {matchedCount > 0 && mode === 'INDIVIDUAL' && (
             <p className="text-sm text-slate-500 mb-2">

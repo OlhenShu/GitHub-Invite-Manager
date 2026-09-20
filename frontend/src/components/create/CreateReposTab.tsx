@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { GitBranch, FileText, Shield, Hash, Lock } from 'lucide-react'
-import type { CreateReposRequest, CreateReposResponse, NamingMode } from '../../types'
-import { createRepos } from '../../api/client'
+import type { AuthenticatedUser, CreateReposRequest, CreateReposResponse, NamingMode } from '../../types'
+import { createRepos, getAuthenticatedUser } from '../../api/client'
 import { buildRepoNamesFromUsernames, parseUsernames } from '../../utils/nameGenerator'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
@@ -30,6 +30,36 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [response, setResponse] = useState<CreateReposResponse | null>(null)
+  const [authUser, setAuthUser] = useState<AuthenticatedUser | null>(null)
+
+  const hasOrg = targetOrg.trim().length > 0
+
+  useEffect(() => {
+    if (!token.trim()) {
+      setAuthUser(null)
+      return
+    }
+    let cancelled = false
+    const handle = window.setTimeout(() => {
+      getAuthenticatedUser(token)
+        .then(user => {
+          if (!cancelled) setAuthUser(user)
+        })
+        .catch(() => {
+          if (!cancelled) setAuthUser(null)
+        })
+    }, 400)
+    return () => {
+      cancelled = true
+      window.clearTimeout(handle)
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (!hasOrg && visibility === 'internal') {
+      setVisibility('private')
+    }
+  }, [hasOrg, visibility])
 
   const listUsernames = useMemo(() => parseUsernames(listRaw), [listRaw])
   const listRepoNames = useMemo(
@@ -45,8 +75,8 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!token.trim()) { setError('Please enter a GitHub token.'); return }
-    if (!templateOwner.trim() || !templateRepo.trim() || !targetOrg.trim()) {
-      setError('Template owner, template repo, and target org are required.')
+    if (!templateOwner.trim() || !templateRepo.trim()) {
+      setError('Template owner and template repository are required.')
       return
     }
     if (repoCount === 0) { setError('No repository names to create.'); return }
@@ -54,7 +84,7 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
     const req: CreateReposRequest = {
       templateOwner: templateOwner.trim(),
       templateRepo: templateRepo.trim(),
-      targetOrg: targetOrg.trim(),
+      targetOrg: targetOrg.trim() || undefined,
       namingMode,
       visibility,
       includeAllBranches,
@@ -73,7 +103,8 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
       onReposCreated(
         res.results
           .filter(r => r.status === 'created' || r.status === 'already_exists')
-          .map(r => `${targetOrg.trim()}/${r.repoName}`),
+          .map(r => r.fullName || (targetOrg.trim() ? `${targetOrg.trim()}/${r.repoName}` : r.repoName))
+          .filter(name => name.includes('/')),
         namingMode === 'LIST' ? listUsernames : undefined,
       )
     } catch (err) {
@@ -125,7 +156,8 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="target-org" className="text-sm font-medium">
-              Target organization <span className="text-red-500">*</span>
+              Target organization{' '}
+              <span className="text-slate-400 font-normal">(optional)</span>
             </Label>
             <Input
               id="target-org"
@@ -133,6 +165,13 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
               onChange={e => setTargetOrg(e.target.value)}
               placeholder="my-org"
             />
+            <p className="text-xs text-slate-500">
+              {hasOrg
+                ? 'Repositories will be created in this organization.'
+                : authUser
+                  ? <>Leave empty to create under your account <span className="font-mono text-slate-700">@{authUser.login}</span>.</>
+                  : 'Leave empty to create repositories under your GitHub account.'}
+            </p>
           </div>
           <div className="space-y-2">
             <Label className="text-sm font-medium">Visibility</Label>
@@ -148,7 +187,9 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
                   </div>
                 </SelectItem>
                 <SelectItem value="public">Public</SelectItem>
-                <SelectItem value="internal">Internal (org plan)</SelectItem>
+                <SelectItem value="internal" disabled={!hasOrg}>
+                  Internal (org plan)
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -1,10 +1,12 @@
 # GitHub Repo & Invite Manager
 
 A web application for:
-1. **Bulk-creating GitHub repositories** from a template in an organisation.
-2. **Bulk-inviting collaborators** (read from a file) to those repositories.
+1. **Bulk-creating GitHub repositories** from a template — in an organisation **or under your personal account**.
+2. **Bulk-inviting collaborators** to those repositories, or to **already existing** personal/org repos.
 
 **Stack:** Java 17 + Spring Boot 3 (backend) · React + Vite + TypeScript + Tailwind (frontend)
+
+**Документація українською:** [docs/](docs/README.md) — огляд, запуск, токен, сценарії, API, типові помилки.
 
 ---
 
@@ -12,22 +14,33 @@ A web application for:
 
 - Java 17+, Maven 3.9+ (or Docker + Docker Compose)
 - Node 20+ (for local frontend dev)
-- A GitHub **Fine-Grained Personal Access Token** (see below)
+- A GitHub **Fine-Grained Personal Access Token** or a classic PAT with `repo` scope (see below)
 
 ---
 
 ## Creating a GitHub Fine-Grained Token
 
+A fine-grained token is bound to **one** resource owner: either your user account **or** a single organisation. It cannot manage both personal repos and a different org at the same time. A **classic** PAT with the `repo` scope can cover both.
+
+### Personal account (no organisation)
+
 1. Go to **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens**
 2. Click **Generate new token**
-3. Set **Resource owner** to the **organisation** you want to manage (important — if you pick "Only select repositories", the token won't be able to create new ones)
-4. Set an expiration date
+3. Set **Resource owner** to **your user account**
+4. Set **Repository access** to **All repositories** (required to create new repos from a template)
 5. Under **Repository permissions** set:
-   - **Administration → Read and write** — required to create repos and manage collaborators
+   - **Administration → Read and write** — create repos and manage collaborators
    - **Metadata → Read-only** — enabled by default, do not remove
 6. Click **Generate token** and copy it immediately
 
-> The token is sent directly from your browser to GitHub via the `Authorization: Bearer …` header.  
+### Organisation
+
+1. Same path as above
+2. Set **Resource owner** to the **organisation** you want to manage
+3. Set **Repository access** to **All repositories** (if you pick "Only select repositories", the token won't be able to create new ones)
+4. Same **Administration** + **Metadata** permissions as above
+
+> The token is sent from your browser to the app backend, which then calls GitHub.  
 > It is **never** stored in localStorage, cookies, or any database — only in the browser's in-memory React state for the duration of your session.
 
 ---
@@ -40,13 +53,21 @@ A web application for:
 cd backend
 
 # Option A — with token as env variable (recommended)
-GITHUB_TOKEN=github_pat_YOUR_TOKEN ./mvnw spring-boot:run
+GITHUB_TOKEN=github_pat_YOUR_TOKEN mvn spring-boot:run
 
 # Option B — without env variable (enter token in the UI)
-./mvnw spring-boot:run
+mvn spring-boot:run
 ```
 
-The backend starts on **http://localhost:8080**.
+The backend starts on **http://localhost:8080**. If that port is already in use (common with WSL on Windows), run on 8081:
+
+```powershell
+cd backend
+$env:PORT='8081'
+mvn spring-boot:run
+```
+
+Then set `VITE_API_URL=http://localhost:8081` in `frontend/.env`.
 
 ### Frontend
 
@@ -81,7 +102,7 @@ In Docker mode the frontend nginx proxies `/api/*` to the backend, so no CORS se
 
 ```bash
 cd backend
-./mvnw test
+mvn test
 ```
 
 ---
@@ -91,12 +112,14 @@ cd backend
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/health` | Health check |
+| `GET` | `/api/user` | Authenticated GitHub user for the token |
+| `GET` | `/api/repos` | List existing repos (`?org=my-org` to filter by organisation) |
 | `POST` | `/api/repos/generate` | Bulk-create repos from template |
 | `POST` | `/api/invites/send` | Bulk-send collaborator invitations |
 
 Pass the token via `X-GitHub-Token` request header (takes priority over the `GITHUB_TOKEN` env variable).
 
-### `POST /api/repos/generate` — example body
+### `POST /api/repos/generate` — organisation
 
 ```json
 {
@@ -114,6 +137,22 @@ Pass the token via `X-GitHub-Token` request header (takes priority over the `GIT
 }
 ```
 
+### `POST /api/repos/generate` — personal account (`targetOrg` omitted)
+
+```json
+{
+  "templateOwner": "my-username",
+  "templateRepo": "lab-template",
+  "namingMode": "PATTERN",
+  "baseName": "lab",
+  "count": 5,
+  "startIndex": 1,
+  "padding": 2,
+  "visibility": "private",
+  "includeAllBranches": false
+}
+```
+
 Or with a custom list:
 
 ```json
@@ -128,15 +167,24 @@ Or with a custom list:
 }
 ```
 
+Each result includes `fullName` (`owner/repo`) so invites can target personal or org repositories without guessing the owner.
+
+### `GET /api/repos` — existing repositories
+
+- No query: repositories the token can access (`GET /user/repos`)
+- `?org=my-org`: repositories in that organisation (`GET /orgs/{org}/repos`)
+
 ### `POST /api/invites/send` — example body
 
 ```json
 {
   "rawUsernames": "octocat\n@hubot\ndefunkt",
-  "repositories": ["my-org/lab-01", "my-org/lab-02"],
+  "repositories": ["my-username/lab-01", "my-org/lab-02"],
   "permission": "push"
 }
 ```
+
+`repositories` is a list of `owner/repo` values — personal or organisation, existing or just created.
 
 ---
 
@@ -164,6 +212,8 @@ repo-charlie
 ## Notes & limitations
 
 - **Rate limits:** the backend processes requests sequentially with a small delay (150–200 ms) between calls and retries up to 3 times with exponential back-off on 429/403/5xx responses.
-- **`internal` visibility:** GitHub's template-generation endpoint only accepts `private: boolean`. If you select *Internal*, the repository is created as public. Set internal visibility manually afterward via the GitHub UI / API, or use a post-creation PATCH call.
+- **Personal vs org:** omit `targetOrg` (or leave the field empty in the UI) to create repositories under the authenticated user. The template itself may be personal or in an organisation.
+- **`internal` visibility:** only valid when creating in an organisation. GitHub's template-generation endpoint only accepts `private: boolean`; internal is created as private. Adjust visibility afterward in GitHub if needed.
 - The template repository must be marked as a **Template repository** in its settings.
-- The token owner must be a **member** of `targetOrg` with sufficient permissions.
+- For organisation creation, the token owner must be a **member** of `targetOrg` with sufficient permissions.
+- One fine-grained token cannot cover both a personal account and a different organisation. Use two tokens, or a classic PAT with `repo` scope.

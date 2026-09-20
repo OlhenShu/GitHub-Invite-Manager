@@ -28,7 +28,16 @@ public class RepoCreationService {
 
     public CreateReposResponse createRepos(String token, CreateReposRequest request) {
         List<String> repoNames = resolveRepoNames(request);
+        String targetOrg = request.targetOrg() == null ? "" : request.targetOrg().trim();
+        if (targetOrg.isEmpty() && "internal".equalsIgnoreCase(request.visibility())) {
+            throw new IllegalArgumentException("Internal visibility requires a target organization");
+        }
+
         boolean isPrivate = !"public".equalsIgnoreCase(request.visibility());
+        String fallbackOwner = targetOrg;
+        if (fallbackOwner.isEmpty()) {
+            fallbackOwner = gitHubClient.getAuthenticatedUser(token).login();
+        }
 
         List<RepoResult> results = new ArrayList<>(repoNames.size());
         for (int i = 0; i < repoNames.size(); i++) {
@@ -38,8 +47,9 @@ public class RepoCreationService {
             RepoResult result = gitHubClient.createRepoFromTemplate(
                     token,
                     request.templateOwner(), request.templateRepo(),
-                    request.targetOrg(), name,
-                    request.description(), request.includeAllBranches(), isPrivate
+                    targetOrg.isEmpty() ? null : targetOrg, name,
+                    request.description(), request.includeAllBranches(), isPrivate,
+                    fallbackOwner
             );
             results.add(result);
 

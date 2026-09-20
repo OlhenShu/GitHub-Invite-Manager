@@ -18,8 +18,11 @@ public class WebConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         List<String> origins = new ArrayList<>(List.of(
                 "http://localhost:5173",
+                "http://127.0.0.1:5173",
                 "http://localhost:3000",
-                "http://localhost:8080"
+                "http://127.0.0.1:3000",
+                "http://localhost:8080",
+                "http://localhost:8081"
         ));
         if (!railwayDomain.isBlank()) {
             origins.add("https://" + railwayDomain);

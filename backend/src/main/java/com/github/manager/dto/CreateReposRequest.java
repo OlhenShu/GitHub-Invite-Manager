@@ -6,7 +6,7 @@ import java.util.List;
 public record CreateReposRequest(
         @NotBlank(message = "templateOwner is required") String templateOwner,
         @NotBlank(message = "templateRepo is required") String templateRepo,
-        @NotBlank(message = "targetOrg is required") String targetOrg,
+        String targetOrg,
         @NotNull(message = "namingMode is required") NamingMode namingMode,
 
         // PATTERN mode fields

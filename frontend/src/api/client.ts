@@ -1,15 +1,34 @@
-import type { CreateReposRequest, CreateReposResponse, InviteRequest, InviteResponse } from '../types'
+import type {
+  AuthenticatedUser,
+  CreateReposRequest,
+  CreateReposResponse,
+  ExistingRepo,
+  InviteRequest,
+  InviteResponse,
+} from '../types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 async function request<T>(url: string, options: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> | undefined),
+  }
+  if (options.body) {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  let res: Response
+  try {
+    res = await fetch(`${BASE_URL}${url}`, {
+      ...options,
+      headers,
+    })
+  } catch {
+    const target = BASE_URL || window.location.origin
+    throw new Error(
+      `Failed to reach the backend at ${target}. If port 8080 is already in use, start the API on another port (e.g. 8081) and set VITE_API_URL.`,
+    )
+  }
 
   if (!res.ok) {
     let message = `HTTP ${res.status}`
@@ -43,4 +62,19 @@ export async function sendInvites(token: string, req: InviteRequest): Promise<In
 
 export async function checkHealth(): Promise<{ status: string }> {
   return request('/api/health', { method: 'GET' })
+}
+
+export async function getAuthenticatedUser(token: string): Promise<AuthenticatedUser> {
+  return request('/api/user', {
+    method: 'GET',
+    headers: { 'X-GitHub-Token': token },
+  })
+}
+
+export async function listRepos(token: string, org?: string): Promise<ExistingRepo[]> {
+  const qs = org?.trim() ? `?org=${encodeURIComponent(org.trim())}` : ''
+  return request(`/api/repos${qs}`, {
+    method: 'GET',
+    headers: { 'X-GitHub-Token': token },
+  })
 }

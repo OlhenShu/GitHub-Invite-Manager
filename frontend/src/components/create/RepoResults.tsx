@@ -25,7 +25,12 @@ export default function RepoResults({ response }: Props) {
 
   const handleExport = () =>
     exportToCSV(
-      results.map(r => ({ repo: r.repoName, status: r.status, url: r.url ?? '', message: r.message ?? '' })),
+      results.map(r => ({
+        repo: r.fullName || r.repoName,
+        status: r.status,
+        url: r.url ?? '',
+        message: r.message ?? '',
+      })),
       'repo-results.csv',
     )
 
@@ -59,9 +64,9 @@ export default function RepoResults({ response }: Props) {
                 <td className="px-4 py-2.5 font-mono text-xs">
                   {r.url ? (
                     <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                      {r.repoName}
+                      {r.fullName || r.repoName}
                     </a>
-                  ) : r.repoName}
+                  ) : (r.fullName || r.repoName)}
                 </td>
                 <td className="px-4 py-2.5">
                   <Badge variant={STATUS_VARIANT[r.status]}>{STATUS_LABELS[r.status]}</Badge>

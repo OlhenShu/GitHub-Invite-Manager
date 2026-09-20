@@ -3,7 +3,7 @@ export type NamingMode = 'PATTERN' | 'LIST'
 export interface CreateReposRequest {
   templateOwner: string
   templateRepo: string
-  targetOrg: string
+  targetOrg?: string
   namingMode: NamingMode
   // PATTERN mode
   baseName?: string
@@ -25,6 +25,20 @@ export interface RepoResult {
   status: RepoStatus
   message: string | null
   url: string | null
+  fullName: string | null
+}
+
+export interface AuthenticatedUser {
+  login: string
+  htmlUrl: string
+}
+
+export interface ExistingRepo {
+  fullName: string
+  htmlUrl: string
+  private: boolean
+  owner: string
+  ownerType: string
 }
 
 export interface RepoSummary {
