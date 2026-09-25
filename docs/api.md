@@ -10,6 +10,9 @@
 | `GET` | `/api/repos` | Список існуючих репо. Без query — особисті (`affiliation=owner`). `?org=my-org` — репо організації |
 | `POST` | `/api/repos/generate` | Масове створення з шаблону |
 | `POST` | `/api/invites/send` | Масові запрошення collaborators |
+| `GET` | `/api/issues/preview` | Список issues і лейблів джерела (`?source=owner/repo&includeClosed=true`) |
+| `POST` | `/api/issues/copy` | Копіювання issues і лейблів у цільове репо |
+| `POST` | `/api/issues/labels/randomize` | Випадкові кольори всіх лейблів репозиторію |
 
 ## Створення в організації
 
@@ -74,3 +77,26 @@
 ```
 
 `mode`: `INDIVIDUAL` (1-до-1) або `TEAM`. Для TEAM можна передати `assignments`: `[{ "username": "alice", "repository": "my-username/lab-01" }]`.
+
+## Копіювання issues
+
+```json
+{
+  "sourceRepo": "mentor/lab-template",
+  "targetRepo": "mentor/lab-alice",
+  "includeClosed": true,
+  "preserveClosedState": true,
+  "issueNumbers": [1, 2, 5]
+}
+```
+
+`issueNumbers` опційний: якщо порожній або відсутній, копіюються всі issues (крім PR) згідно з `includeClosed`. У UI діапазон на кшталт `1-5, 8` розгортається в цей список перед відправкою.
+
+## Випадкові кольори лейблів
+
+```json
+{ "repository": "mentor/lab-template" }
+```
+
+У відповіді кожен лейбл має `previousColor`, новий `color` і `status`: `updated` або `failed`.
+

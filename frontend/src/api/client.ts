@@ -1,10 +1,14 @@
 import type {
   AuthenticatedUser,
+  CopyIssuesRequest,
+  CopyIssuesResponse,
   CreateReposRequest,
   CreateReposResponse,
   ExistingRepo,
   InviteRequest,
   InviteResponse,
+  IssuePreviewResponse,
+  RandomizeLabelsResponse,
 } from '../types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -76,5 +80,33 @@ export async function listRepos(token: string, org?: string): Promise<ExistingRe
   return request(`/api/repos${qs}`, {
     method: 'GET',
     headers: { 'X-GitHub-Token': token },
+  })
+}
+
+export async function previewIssues(
+  token: string,
+  source: string,
+  includeClosed: boolean,
+): Promise<IssuePreviewResponse> {
+  const qs = `?source=${encodeURIComponent(source)}&includeClosed=${includeClosed}`
+  return request(`/api/issues/preview${qs}`, {
+    method: 'GET',
+    headers: { 'X-GitHub-Token': token },
+  })
+}
+
+export async function copyIssues(token: string, req: CopyIssuesRequest): Promise<CopyIssuesResponse> {
+  return request('/api/issues/copy', {
+    method: 'POST',
+    headers: { 'X-GitHub-Token': token },
+    body: JSON.stringify(req),
+  })
+}
+
+export async function randomizeLabelColors(token: string, repository: string): Promise<RandomizeLabelsResponse> {
+  return request('/api/issues/labels/randomize', {
+    method: 'POST',
+    headers: { 'X-GitHub-Token': token },
+    body: JSON.stringify({ repository }),
   })
 }

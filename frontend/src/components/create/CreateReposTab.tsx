@@ -3,6 +3,13 @@ import { GitBranch, FileText, Shield, Hash, Lock } from 'lucide-react'
 import type { AuthenticatedUser, CreateReposRequest, CreateReposResponse, NamingMode } from '../../types'
 import { createRepos, getAuthenticatedUser } from '../../api/client'
 import { buildRepoNamesFromUsernames, parseUsernames } from '../../utils/nameGenerator'
+import {
+  loadCreateHistory,
+  rememberCreateTarget,
+  removeRecentOrg,
+  removeRecentTemplate,
+  type CreateHistory,
+} from '../../utils/createHistory'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
@@ -11,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import NamingPatternForm from './NamingPatternForm'
 import NamingListForm from './NamingListForm'
 import RepoResults from './RepoResults'
+import { RecentOrgPicker, RecentTemplatePicker } from './RecentHistoryPicker'
 
 interface Props {
   token: string
@@ -18,10 +26,12 @@ interface Props {
 }
 
 export default function CreateReposTab({ token, onReposCreated }: Props) {
+  const [history, setHistory] = useState<CreateHistory>(() => loadCreateHistory())
+  const lastTemplate = history.templates[0]
   const [namingMode, setNamingMode] = useState<NamingMode>('PATTERN')
-  const [templateOwner, setTemplateOwner] = useState('')
-  const [templateRepo, setTemplateRepo] = useState('')
-  const [targetOrg, setTargetOrg] = useState('')
+  const [templateOwner, setTemplateOwner] = useState(lastTemplate?.owner ?? '')
+  const [templateRepo, setTemplateRepo] = useState(lastTemplate?.repo ?? '')
+  const [targetOrg, setTargetOrg] = useState(history.orgs[0] ?? '')
   const [visibility, setVisibility] = useState<'private' | 'public' | 'internal'>('private')
   const [includeAllBranches, setIncludeAllBranches] = useState(false)
   const [description, setDescription] = useState('')
@@ -100,6 +110,10 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
     try {
       const res = await createRepos(token, req)
       setResponse(res)
+      setHistory(rememberCreateTarget(
+        { owner: req.templateOwner, repo: req.templateRepo },
+        req.targetOrg,
+      ))
       onReposCreated(
         res.results
           .filter(r => r.status === 'created' || r.status === 'already_exists')
@@ -116,87 +130,121 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-start">
 
-        {/* Template Configuration */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 mb-2">
-            <FileText className="w-4 h-4 text-blue-600" />
-            <h3 className="font-semibold text-slate-900">Template Configuration</h3>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="template-owner" className="text-sm font-medium">
-              Template owner <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="template-owner"
-              value={templateOwner}
-              onChange={e => setTemplateOwner(e.target.value)}
-              placeholder="my-org"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="template-repo" className="text-sm font-medium">
-              Template repository <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="template-repo"
-              value={templateRepo}
-              onChange={e => setTemplateRepo(e.target.value)}
-              placeholder="lab-template"
-            />
-          </div>
+        <div className="min-w-0 flex items-center gap-2 h-6">
+          <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+          <h3 className="font-semibold text-slate-900">Template Configuration</h3>
+        </div>
+        <div className="min-w-0 flex items-center gap-2 h-6">
+          <Shield className="w-4 h-4 text-blue-600 shrink-0" />
+          <h3 className="font-semibold text-slate-900">Repository Settings</h3>
         </div>
 
-        {/* Repository Settings */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Shield className="w-4 h-4 text-blue-600" />
-            <h3 className="font-semibold text-slate-900">Repository Settings</h3>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="target-org" className="text-sm font-medium">
-              Target organization{' '}
-              <span className="text-slate-400 font-normal">(optional)</span>
-            </Label>
-            <Input
-              id="target-org"
-              value={targetOrg}
-              onChange={e => setTargetOrg(e.target.value)}
-              placeholder="my-org"
-            />
-            <p className="text-xs text-slate-500">
-              {hasOrg
-                ? 'Repositories will be created in this organization.'
-                : authUser
-                  ? <>Leave empty to create under your account <span className="font-mono text-slate-700">@{authUser.login}</span>.</>
-                  : 'Leave empty to create repositories under your GitHub account.'}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Visibility</Label>
-            <Select value={visibility} onValueChange={v => setVisibility(v as typeof visibility)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="private">
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4" />
-                    Private
-                  </div>
-                </SelectItem>
-                <SelectItem value="public">Public</SelectItem>
-                <SelectItem value="internal" disabled={!hasOrg}>
-                  Internal (org plan)
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="min-w-0 space-y-2">
+          <Label htmlFor="template-owner" className="text-sm font-medium">
+            Template owner <span className="text-red-500">*</span>
+          </Label>
+          <Input
+            id="template-owner"
+            value={templateOwner}
+            onChange={e => setTemplateOwner(e.target.value)}
+            placeholder="my-org"
+            list="recent-template-owners"
+          />
+          <datalist id="recent-template-owners">
+            {[...new Set(history.templates.map(item => item.owner))].map(owner => (
+              <option key={owner} value={owner} />
+            ))}
+          </datalist>
+        </div>
+        <div className="min-w-0 space-y-2">
+          <Label htmlFor="target-org" className="text-sm font-medium">
+            Target organization{' '}
+            <span className="text-slate-400 font-normal">(optional)</span>
+          </Label>
+          <Input
+            id="target-org"
+            value={targetOrg}
+            onChange={e => setTargetOrg(e.target.value)}
+            placeholder="my-org"
+            list="recent-orgs"
+          />
+          <datalist id="recent-orgs">
+            {history.orgs.map(org => (
+              <option key={org} value={org} />
+            ))}
+          </datalist>
+        </div>
+
+        <div className="min-w-0 space-y-2">
+          <Label htmlFor="template-repo" className="text-sm font-medium">
+            Template repository <span className="text-red-500">*</span>
+          </Label>
+          <Input
+            id="template-repo"
+            value={templateRepo}
+            onChange={e => setTemplateRepo(e.target.value)}
+            placeholder="lab-template"
+            list="recent-template-repos"
+          />
+          <datalist id="recent-template-repos">
+            {[...new Set(history.templates.map(item => item.repo))].map(repo => (
+              <option key={repo} value={repo} />
+            ))}
+          </datalist>
+        </div>
+        <div className="min-w-0 space-y-2">
+          <Label className="text-sm font-medium">Visibility</Label>
+          <Select value={visibility} onValueChange={v => setVisibility(v as typeof visibility)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="private">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4" />
+                  Private
+                </div>
+              </SelectItem>
+              <SelectItem value="public">Public</SelectItem>
+              <SelectItem value="internal" disabled={!hasOrg}>
+                Internal (org plan)
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="min-w-0">
+          <RecentTemplatePicker
+            items={history.templates}
+            activeOwner={templateOwner}
+            activeRepo={templateRepo}
+            onSelect={item => {
+              setTemplateOwner(item.owner)
+              setTemplateRepo(item.repo)
+            }}
+            onRemove={item => setHistory(removeRecentTemplate(item))}
+          />
+        </div>
+        <div className="min-w-0 space-y-1.5">
+          <RecentOrgPicker
+            items={history.orgs}
+            active={targetOrg}
+            onSelect={setTargetOrg}
+            onRemove={org => setHistory(removeRecentOrg(org))}
+          />
+          <p className="text-xs text-slate-500">
+            {hasOrg
+              ? 'Repositories will be created in this organization.'
+              : authUser
+                ? <>Leave empty to create under your account <span className="font-mono text-slate-700">@{authUser.login}</span>.</>
+                : 'Leave empty to create repositories under your GitHub account.'}
+          </p>
         </div>
 
         {/* Description – full width */}
-        <div className="col-span-2 space-y-2">
+        <div className="md:col-span-2 space-y-2">
           <Label htmlFor="description" className="text-sm font-medium">
             Description{' '}
             <span className="text-slate-400 font-normal">
@@ -212,19 +260,24 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
         </div>
 
         {/* Include all branches – full width */}
-        <div className="col-span-2 flex items-center space-x-2">
+        <div className="md:col-span-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
           <Switch
             id="include-branches"
             checked={includeAllBranches}
             onCheckedChange={setIncludeAllBranches}
           />
-          <Label htmlFor="include-branches" className="text-sm font-medium cursor-pointer">
-            Include all branches from template
-          </Label>
+          <div className="min-w-0">
+            <Label htmlFor="include-branches" className="text-sm font-medium cursor-pointer">
+              Include all branches from template
+            </Label>
+            <p className="text-xs text-slate-500">
+              Off copies only the default branch. Turn on if the template has extra branches you need.
+            </p>
+          </div>
         </div>
 
         {/* Naming Mode – full width */}
-        <div className="col-span-2 space-y-4 pt-4 border-t border-slate-100">
+        <div className="md:col-span-2 space-y-4 pt-4 border-t border-slate-100">
           <div className="flex items-center gap-2">
             <Hash className="w-4 h-4 text-blue-600" />
             <h3 className="font-semibold text-slate-900">Naming Mode</h3>
@@ -257,13 +310,13 @@ export default function CreateReposTab({ token, onReposCreated }: Props) {
 
         {/* Error */}
         {error && (
-          <div className="col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+          <div className="md:col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
             {error}
           </div>
         )}
 
         {/* Submit */}
-        <div className="col-span-2 pt-4">
+        <div className="md:col-span-2 pt-2">
           <Button
             type="submit"
             disabled={loading || repoCount === 0}

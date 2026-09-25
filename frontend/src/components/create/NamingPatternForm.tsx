@@ -25,8 +25,8 @@ export default function NamingPatternForm({ value, onChange }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="base-name" className="text-sm font-medium">
             Base name <span className="text-red-500">*</span>
           </Label>
@@ -37,7 +37,7 @@ export default function NamingPatternForm({ value, onChange }: Props) {
             placeholder="lab"
           />
         </div>
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="count" className="text-sm font-medium">
             Count (1–200) <span className="text-red-500">*</span>
           </Label>
@@ -50,7 +50,7 @@ export default function NamingPatternForm({ value, onChange }: Props) {
             onChange={e => onChange({ count: parseInt(e.target.value) || 1 })}
           />
         </div>
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="start-index" className="text-sm font-medium">Start index</Label>
           <Input
             id="start-index"
@@ -60,7 +60,7 @@ export default function NamingPatternForm({ value, onChange }: Props) {
             onChange={e => onChange({ startIndex: parseInt(e.target.value) || 1 })}
           />
         </div>
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="padding" className="text-sm font-medium">Zero-padding digits</Label>
           <Input
             id="padding"

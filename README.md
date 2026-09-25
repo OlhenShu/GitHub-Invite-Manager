@@ -3,6 +3,7 @@
 A web application for:
 1. **Bulk-creating GitHub repositories** from a template — in an organisation **or under your personal account**.
 2. **Bulk-inviting collaborators** to those repositories, or to **already existing** personal/org repos.
+3. **Copying issues** from one repository to another **with labels** (name, color, description), and **randomizing label colors** on a chosen repo.
 
 **Stack:** Java 17 + Spring Boot 3 (backend) · React + Vite + TypeScript + Tailwind (frontend)
 
@@ -30,6 +31,7 @@ A fine-grained token is bound to **one** resource owner: either your user accoun
 4. Set **Repository access** to **All repositories** (required to create new repos from a template)
 5. Under **Repository permissions** set:
    - **Administration → Read and write** — create repos and manage collaborators
+   - **Issues → Read and write** — copy issues and randomize label colors
    - **Metadata → Read-only** — enabled by default, do not remove
 6. Click **Generate token** and copy it immediately
 
@@ -38,7 +40,7 @@ A fine-grained token is bound to **one** resource owner: either your user accoun
 1. Same path as above
 2. Set **Resource owner** to the **organisation** you want to manage
 3. Set **Repository access** to **All repositories** (if you pick "Only select repositories", the token won't be able to create new ones)
-4. Same **Administration** + **Metadata** permissions as above
+4. Same **Administration**, **Issues**, and **Metadata** permissions as above
 
 > The token is sent from your browser to the app backend, which then calls GitHub.  
 > It is **never** stored in localStorage, cookies, or any database — only in the browser's in-memory React state for the duration of your session.
@@ -116,6 +118,9 @@ mvn test
 | `GET` | `/api/repos` | List existing repos (`?org=my-org` to filter by organisation) |
 | `POST` | `/api/repos/generate` | Bulk-create repos from template |
 | `POST` | `/api/invites/send` | Bulk-send collaborator invitations |
+| `GET` | `/api/issues/preview` | List issues and labels from a source repo |
+| `POST` | `/api/issues/copy` | Copy issues and labels to a target repo |
+| `POST` | `/api/issues/labels/randomize` | Assign random colors to every label on a repo |
 
 Pass the token via `X-GitHub-Token` request header (takes priority over the `GITHUB_TOKEN` env variable).
 
@@ -214,6 +219,7 @@ repo-charlie
 - **Rate limits:** the backend processes requests sequentially with a small delay (150–200 ms) between calls and retries up to 3 times with exponential back-off on 429/403/5xx responses.
 - **Personal vs org:** omit `targetOrg` (or leave the field empty in the UI) to create repositories under the authenticated user. The template itself may be personal or in an organisation.
 - **`internal` visibility:** only valid when creating in an organisation. GitHub's template-generation endpoint only accepts `private: boolean`; internal is created as private. Adjust visibility afterward in GitHub if needed.
+- Turn on **Include all branches from template** if the template has more than the default branch; otherwise GitHub copies only the default branch.
 - The template repository must be marked as a **Template repository** in its settings.
 - For organisation creation, the token owner must be a **member** of `targetOrg` with sufficient permissions.
 - One fine-grained token cannot cover both a personal account and a different organisation. Use two tokens, or a classic PAT with `repo` scope.

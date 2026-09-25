@@ -89,3 +89,84 @@ export interface InviteResponse {
   results: InviteResult[]
   summary: InviteSummary
 }
+
+export interface RepoLabel {
+  name: string
+  color: string
+  description: string
+}
+
+export interface SourceIssue {
+  number: number
+  title: string
+  body: string
+  state: string
+  url: string | null
+  labels: string[]
+}
+
+export interface IssuePreviewResponse {
+  repository: string
+  issues: SourceIssue[]
+  labels: RepoLabel[]
+}
+
+export interface CopyIssuesRequest {
+  sourceRepo: string
+  targetRepo: string
+  includeClosed: boolean
+  preserveClosedState: boolean
+  issueNumbers?: number[]
+}
+
+export type IssueCopyStatus = 'copied' | 'skipped' | 'failed'
+
+export interface IssueCopyResult {
+  sourceNumber: number
+  title: string
+  status: IssueCopyStatus
+  message: string | null
+  url: string | null
+  labels: string[]
+}
+
+export interface LabelCopyResult {
+  name: string
+  status: 'created' | 'already_exists' | 'failed'
+  message: string | null
+}
+
+export interface CopyIssuesResponse {
+  results: IssueCopyResult[]
+  labels: LabelCopyResult[]
+  summary: {
+    total: number
+    copied: number
+    skipped: number
+    failed: number
+  }
+  labelSummary: {
+    total: number
+    created: number
+    already_exists: number
+    failed: number
+  }
+}
+
+export interface LabelColorResult {
+  name: string
+  previousColor: string | null
+  color: string
+  status: 'updated' | 'failed'
+  message: string | null
+}
+
+export interface RandomizeLabelsResponse {
+  repository: string
+  results: LabelColorResult[]
+  summary: {
+    total: number
+    updated: number
+    failed: number
+  }
+}

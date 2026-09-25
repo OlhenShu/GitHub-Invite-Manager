@@ -14,6 +14,7 @@ Classic PAT зі scope `repo` може працювати і з особисти
 4. **Repository access** = **All repositories** (інакше не вийде створювати нові репо з шаблону).
 5. Permissions:
    - **Administration → Read and write**
+   - **Issues → Read and write** (копіювання issues і випадкові кольори лейблів)
    - **Metadata → Read** (зазвичай уже увімкнено)
 6. Скопіюйте токен одразу (`github_pat_…`).
 
