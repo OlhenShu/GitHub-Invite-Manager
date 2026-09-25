@@ -238,11 +238,7 @@ public class GitHubClient {
 
         for (int page = 0; page < MAX_PAGES && nextPath != null; page++) {
             try {
-                ResponseEntity<List> response = restClient.get()
-                        .uri(nextPath)
-                        .header("Authorization", "Bearer " + resolvedToken)
-                        .retrieve()
-                        .toEntity(List.class);
+                ResponseEntity<List> response = getListPage(resolvedToken, nextPath);
 
                 List<?> body = response.getBody();
                 if (body == null || body.isEmpty()) {
@@ -256,10 +252,7 @@ public class GitHubClient {
                         }
                     }
                 }
-                if (body.size() < PAGE_SIZE) {
-                    break;
-                }
-                nextPath = nextLinkPath(response.getHeaders().getFirst("Link"));
+                nextPath = nextLinkUrl(response.getHeaders().getFirst("Link"));
             } catch (HttpClientErrorException e) {
                 int status = e.getStatusCode().value();
                 if (status == 401) {
@@ -300,7 +293,11 @@ public class GitHubClient {
         return new ExistingRepo(name, htmlUrl, isPrivate, owner, ownerType);
     }
 
-    private String nextLinkPath(String linkHeader) {
+    /**
+     * Full next URL from GitHub's Link header. Must stay absolute so RestClient
+     * does not re-encode cursor query params like {@code after}.
+     */
+    static String nextLinkUrl(String linkHeader) {
         if (linkHeader == null || linkHeader.isBlank()) {
             return null;
         }
@@ -308,12 +305,19 @@ public class GitHubClient {
         if (!matcher.find()) {
             return null;
         }
-        URI next = URI.create(matcher.group(1));
-        String path = next.getRawPath();
-        if (path == null) {
-            return null;
-        }
-        return next.getRawQuery() == null ? path : path + "?" + next.getRawQuery();
+        return matcher.group(1);
+    }
+
+    @SuppressWarnings("unchecked")
+    private ResponseEntity<List> getListPage(String resolvedToken, String pathOrUrl) {
+        var request = restClient.get();
+        URI uri = pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")
+                ? URI.create(pathOrUrl)
+                : null;
+        return (uri != null ? request.uri(uri) : request.uri(pathOrUrl))
+                .header("Authorization", "Bearer " + resolvedToken)
+                .retrieve()
+                .toEntity(List.class);
     }
 
     public List<RepoLabel> listLabels(String token, RepoRef repo) {
@@ -513,11 +517,7 @@ public class GitHubClient {
         String nextPath = firstPath;
         for (int page = 0; page < MAX_PAGES && nextPath != null; page++) {
             try {
-                ResponseEntity<List> response = restClient.get()
-                        .uri(nextPath)
-                        .header("Authorization", "Bearer " + resolvedToken)
-                        .retrieve()
-                        .toEntity(List.class);
+                ResponseEntity<List> response = getListPage(resolvedToken, nextPath);
                 List<?> body = response.getBody();
                 if (body == null || body.isEmpty()) {
                     break;
@@ -527,10 +527,7 @@ public class GitHubClient {
                         all.add(map);
                     }
                 }
-                if (body.size() < PAGE_SIZE) {
-                    break;
-                }
-                nextPath = nextLinkPath(response.getHeaders().getFirst("Link"));
+                nextPath = nextLinkUrl(response.getHeaders().getFirst("Link"));
             } catch (HttpClientErrorException e) {
                 int status = e.getStatusCode().value();
                 if (status == 401) {
